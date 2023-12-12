@@ -1,0 +1,5 @@
+build
+*.vcd
+__pycache__
+venv
+.python-version

@@ -5,10 +5,12 @@ from transactron.core import TransactionModule
 
 
 class Top(Elaboratable):
+    def __init__(self):
+        self.c = Pong()
     def elaborate(self, platform):
         m = Module()
         tm = TransactionModule(m)
-        m.submodules.c = Pong()
+        m.submodules.c = self.c
         return tm
 
 if __name__ == "__main__":

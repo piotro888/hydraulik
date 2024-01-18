@@ -16,14 +16,13 @@ def bench():
         yield dut.c.ethi.i_rx_data.eq(d)
 
 
-    for _ in range(10):
+    for _ in range(1000):
         yield dut.c.ethi.i_rx_clk.eq(~dut.c.ethi.i_rx_clk)
         yield  
         yield dut.c.ethi.i_rx_clk.eq(~dut.c.ethi.i_rx_clk)
         yield   
         yield dut.c.ethi.i_rx_valid.eq(0)
     
-
 
 sim = Simulator(dut)
 

@@ -1,56 +1,99 @@
 from amaranth import *
-from amaranth.hdl.ast import SignalSet
-from amaranth.lib.io import FlippedInterface
 from pong.eth.frontend import EtherentInterface
-from pong.frontend.front import Receiver
+from pong.proto.eth import Ethertype
+from pong.proto.out.eth import REQUEST_LAYOUT, EthernetProtoOut, SELFMAC
+from pong.support.serial import Serial
 
-from transactron.core import TModule, Transaction 
+from transactron.core import Method, TModule, Transaction, def_method 
 
 from pong.eth.mdio import PHY_ETH0, REG_1000T_CTRL, MDIOController
-from transactron.lib.connectors import ConnectTrans
 
 class Pong(Elaboratable):
     def __init__(self):
-        self.mdio = MDIOController()
         self.ethi = EtherentInterface()
 
     def elaborate(self, platform):
         m = TModule()
 
-        m.submodules.mdio = self.mdio 
-        m.submodules.eth0_i = ethi = self.ethi
+        m.submodules.mdio = mdio = MDIOController()
+        m.submodules.eth0_i = ethi = self.ethi 
+        m.submodules.eth1_i = ethi1 = EtherentInterface()
+        m.submodules.uart = uart = Serial()
         
         if platform is not None:
-            enet = platform.request("enet")
-            m.d.comb += enet.mdc.eq(self.mdio.o_mdc)
-            m.d.comb += enet.mdio.o.eq(self.mdio.o_mdio)
-            m.d.comb += enet.mdio.oe.eq(1)#self.mdio.oe_mdio)
+            enet = platform.request("enet", 0)
+            soft_loopback = 0
+            reverse_loopback = 0
+            if soft_loopback:
+                # OK
+                m.d.comb += ethi.i_rx_clk.eq(ethi.o_tx_clk)
+                m.d.comb += ethi.i_rx_valid.eq(ethi.o_tx_valid)
+                m.d.comb += ethi.i_rx_data.eq(ethi.o_tx_data)
+            elif reverse_loopback:
+                # NOT WORKINGGIGNIGNIRNIGSNRIGNIRSRNISGI
+                m.d.comb += enet.rst.eq(ResetSignal())
+                m.d.comb += enet.mdc.eq(mdio.o_mdc)
+                m.d.comb += enet.mdio.o.eq(mdio.o_mdio)
+                m.d.comb += enet.mdio.oe.eq(mdio.oe_mdio)
+                m.d.comb += enet.gtx_clk.eq(enet.rx_clk)
+                m.d.comb += enet.tx_data.eq(enet.rx_data)
+                m.d.comb += enet.tx_en.eq(enet.rx_dv)
+            else:
+                m.d.comb += enet.mdc.eq(mdio.o_mdc)
+                m.d.comb += enet.mdio.o.eq(mdio.o_mdio)
+                m.d.comb += enet.mdio.oe.eq(mdio.oe_mdio)
+                m.d.comb += enet.rst.eq(ResetSignal())
+                m.d.comb += ethi.i_rx_clk.eq(enet.rx_clk)
+                m.d.comb += ethi.i_rx_data.eq(enet.rx_data)
+                m.d.comb += ethi.i_rx_valid.eq(enet.rx_dv)
+                m.d.comb += enet.gtx_clk.eq(~ethi.o_tx_clk) # FUCKING CLOCK EDGEETTNESNTESNTES
+                m.d.comb += enet.tx_data.eq(ethi.o_tx_data)
+                m.d.comb += enet.tx_en.eq(ethi.o_tx_valid)
+
+            ### PORT 1
+            enet = platform.request("enet", 1)
+            m.d.comb += enet.mdc.eq(mdio.o_mdc)
+            m.d.comb += enet.mdio.o.eq(mdio.o_mdio)
+            m.d.comb += enet.mdio.oe.eq(1)
             m.d.comb += enet.rst.eq(ResetSignal())
-            m.d.comb += ethi.i_rx_clk.eq(enet.rx_clk)
-            m.d.comb += ethi.i_rx_data.eq(enet.rx_data)
-            m.d.comb += ethi.i_rx_valid.eq(enet.rx_dv)
-            m.d.comb += enet.gtx_clk.eq(ethi.o_tx_clk)
-            m.d.comb += enet.tx_data.eq(ethi.o_tx_data)
-            m.d.comb += enet.tx_en.eq(ethi.o_tx_valid)
+            m.d.comb += ethi1.i_rx_clk.eq(enet.rx_clk)
+            m.d.comb += ethi1.i_rx_data.eq(enet.rx_data)
+            m.d.comb += ethi1.i_rx_valid.eq(enet.rx_dv)
+            m.d.comb += enet.gtx_clk.eq(ethi1.o_tx_clk)
+            m.d.comb += enet.tx_data.eq(ethi1.o_tx_data)
+            m.d.comb += enet.tx_en.eq(ethi1.o_tx_valid)
+            ### UART
+            puart = platform.request("uart")
+            m.d.comb += puart.tx.eq(uart.o_tx)
         
         init = Signal(reset=1)
+        btsig = Signal()
         with m.FSM("START"):
             with m.State("START"):
                 with Transaction().body(m):
-                    self.mdio.write(m, addr=PHY_ETH0, reg=REG_1000T_CTRL, data=0) # disable 1 Gig negotiation
-                    #self.mdio.write(m, addr=PHY_ETH0, reg=25, data=0xffff) # LED OVERRIDE
+                    mdio.write(m, addr=PHY_ETH0, reg=REG_1000T_CTRL, data=0) # disable 1 Gig negotiation
+                    #mdio.write(m, addr=PHY_ETH0, reg=25, data=0xffff-1) # LED OVERRIDE
                     m.next = "INIT1"
             with m.State("INIT1"):
                 with Transaction().body(m):
-                    #self.mdio.write(m, addr=PHY_ETH0, reg=REG_AUTO_NEG_ADV, data=(1<<7)|(1<<8)) # enable only 100 BASET negotiation
-                    m.next = "INIT_RESET"
-            with m.State("INIT_RESET"):
+                    mdio.write(m, addr=PHY_ETH0, reg=4, data=(1<<7)|(1<<8)) # enable only 100 BASET negotiation
+
+                    m.next = "INIT2"
+            with m.State("INIT2"):
                 with Transaction().body(m):
-                    self.mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<15)) # soft reset 
+                    #mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<15)) # soft reset 
+                    m.next = "INIT_RESET"
+
+            with m.State("INIT_RESET"):
+                with Transaction().body(m, request=btsig):
+                    #mdio.write(m, addr=PHY_ETH0, reg=20, data=(1<<14)) # F LINE LOOPBACK 
+                    #mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<14)) # F MAC LOOPBACK 
+                    #mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<15)) # soft reset 
                     m.next = "END"
             with m.State("END"):
                 m.d.sync += init.eq(0)
-
+        
+        ledsd = Signal(16)
         if platform is not None:
             leds = platform.request("led_r")
             ledsg = platform.request("led_g")
@@ -59,34 +102,71 @@ class Pong(Elaboratable):
             dset = Signal()
             sset = Signal()
             ttet = Signal()
-            ledsd = Signal(16)
-            with Transaction().body(m):
-                rx = ethi.rx(m).data
-                with m.If(~dset):
-                    m.d.sync += ledsd.eq(rx)
-                    m.d.sync += dset.eq(1)
-                with m.Elif(~sset):
-                    m.d.sync += ledsd.eq(ledsd | (rx<<8))
-                    m.d.sync += sset.eq(1)
-                with m.Elif(~ttet):
-                    m.d.sync += ledsg.eq(rx)
-                    m.d.sync += ttet.eq(1)
+            #if 0:
+            # with Transaction().body(m):
+            #     rx = ethi.rx(m).data
+            #     with m.If(~dset):
+            #         m.d.sync += ledsd.eq(rx)
+            #         m.d.sync += dset.eq(1)
+            #     with m.Elif(~sset):
+            #         m.d.sync += ledsd.eq(ledsd | (rx<<8))
+            #         m.d.sync += sset.eq(1)
+            #     with m.Elif(~ttet):
+            #         m.d.sync += ledsg.eq(rx)
+            #         m.d.sync += ttet.eq(1)
+            #         m.d.sync += dset.eq(0)
+            #         m.d.sync += sset.eq(0)
+            #         m.d.sync += ttet.eq(0)
             m.d.comb += leds.eq(ledsd)
             
             with m.If(bt.i):
+                m.d.comb += btsig.eq(1)
                 m.d.sync += ledsd.eq(0)
                 m.d.sync += dset.eq(0)
                 m.d.sync += sset.eq(0)
                 m.d.sync += ttet.eq(0)
                 m.d.sync += ledsg.eq(0)
-        #else:
-        #with Transaction().body(m):
-            #self.ethi.tx(m, self.ethi.rx(m))
+
+        eth_request = Method(o=REQUEST_LAYOUT)
+        @def_method(m, eth_request)
+        def _():
+            return {"data":0, "end":1}
+
+        m.submodules.ethout = ethout = EthernetProtoOut(push=ethi.tx, request=eth_request)
         
-        #rcv = Receiver(self.ethi.rx)
-        #m.submodules.rcv = rcv
-        #if platform is not None:
-        #    leds = platform.request("led_r")
-        #    m.d.comb  += leds.eq(rcv.led)
+        cnt = Signal(32)
+        m.d.comb += ethout.dest_mac.eq(-1)
+        m.d.comb += ethout.source_mac.eq(SELFMAC+cnt)
+        m.d.comb += ethout.ethertype.eq(Ethertype.ARP)
+        
+        with Transaction().body(m, request=btsig):
+            #self.ethi.tx(m, data=0xfa, end=0) 
+            ethout.start(m)
+            m.d.sync += cnt.eq(cnt+1)
+        
+
+        #with Transaction().body(m):
+        #    ethi.tx(m, ethi.rx(m))
+
+
+     #   cntrs = Signal()
+     #   with Transaction().body(m):
+     #       rx = ethi.rx(m)
+     #       with m.If(rx.end):
+     #           m.d.sync += cntrs.eq(1)
+     #    
+     #       with m.If(cntrs):
+     #           m.d.sync += ledsd.eq(1)
+     #           m.d.sync += cntrs.eq(0)
+     #       with m.Else():
+     #           m.d.sync += ledsd.eq(ledsd + 1)
+        with Transaction().body(m):
+            rx = ethi.rx(m)
+            send = Signal(8)
+            with m.If(rx.end):
+                m.d.comb += send.eq(0x2e)
+            with m.Else():
+                m.d.comb += send.eq(rx.data)
+            uart.tx(m, data=send)
 
         return m

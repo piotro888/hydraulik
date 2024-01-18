@@ -23,29 +23,52 @@ class MDIOController(Elaboratable):
     def elaborate(self, platform):
         m = TModule()
         
-        tx_word = Signal(32+33)
-        tx_cnt = Signal(range(32+32))
-
-        active = Signal()
+        m.submodules.clkdiv = clkdiv = ClkFlag(6) 
         
-        m.submodules.clkdiv = clkdiv = ClkFlag(5) 
-        with m.If(clkdiv.tick & active):
-            m.d.sync += self.o_mdc.eq(~self.o_mdc)
-            
-            with m.If(self.o_mdc):
-                idx = (31+32-tx_cnt).as_unsigned()
-                m.d.sync += self.o_mdio.eq(Mux(tx_cnt == 32+32, 1, (tx_word.bit_select(idx,1)) & 1))
-                m.d.sync += self.oe_mdio.eq((tx_cnt != 32+32))
+        tx_word = Signal(32)
 
-                m.d.sync += tx_cnt.eq(tx_cnt + 1)
-                
-                with m.If(tx_cnt == 32+32):
-                    m.d.sync += active.eq(0)
-                    m.d.sync += tx_cnt.eq(0)
+        bit = Signal(range(32))
         
-        @def_method(m, self.write, ready=~active)
+        with m.FSM("idle") as fsm:
+            with m.State("idle"):
+                m.d.sync += self.o_mdc.eq(0)
+                m.d.sync += self.oe_mdio.eq(0)
+                with m.If(self.write.run):
+                    m.next = "preamble"
+            with m.State("preamble"):
+                with m.If(clkdiv.tick):
+                    m.d.sync += self.o_mdc.eq(~self.o_mdc)
+                    m.d.sync += self.oe_mdio.eq(1)
+                    m.d.sync += self.o_mdio.eq(1)
+                    with m.If(self.o_mdc):
+                        m.d.sync += bit.eq(bit+1)
+                        with m.If(bit == 31):
+                            m.next = "data"
+            with m.State("data"):
+                with m.If(clkdiv.tick):
+                    m.d.sync += self.o_mdc.eq(~self.o_mdc)
+                    with m.If(self.o_mdc):
+                        m.d.sync += bit.eq(bit+1)
+                        m.d.sync += self.o_mdio.eq(tx_word.bit_select((31-bit).as_unsigned(), 1))
+                        with m.If(bit == 31):
+                            m.next = "lastbit"
+            with m.State("lastbit"):
+                with m.If(clkdiv.tick):
+                    m.d.sync += self.o_mdc.eq(~self.o_mdc)
+                    m.next = "gap"
+            with m.State("gap"):
+                with m.If(clkdiv.tick):
+                    m.d.sync += self.o_mdc.eq(0)
+                    m.d.sync += self.o_mdc.eq(1)
+                    m.d.sync += self.oe_mdio.eq(1)
+                    m.d.sync += self.o_mdio.eq(1)
+                    m.d.sync += bit.eq(bit+1)
+                    with m.If(bit == 31):
+                        m.next = "idle"
+
+
+        @def_method(m, self.write, ready=fsm.ongoing("idle"))
         def _(addr, reg, data):
-            m.d.sync += tx_word.eq(Cat(data, C(0), C(1), reg, addr, C(0b01, 2), C(0b01, 2), C(2**32-1,32)))
-            m.d.sync += active.eq(1)
+            m.d.sync += tx_word.eq(Cat(data, C(0), C(1), reg, addr, C(0b01, 2), C(0b01, 2)))
 
         return m

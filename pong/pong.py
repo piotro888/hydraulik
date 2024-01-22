@@ -1,7 +1,10 @@
 from amaranth import *
+from pong.eth.crcdiscard import CRCDiscarder
 from pong.eth.frontend import EtherentInterface
+from pong.frontend.parser import Parser
 from pong.proto.eth import Ethertype
 from pong.proto.out.eth import REQUEST_LAYOUT, EthernetProtoOut, SELFMAC
+from pong.sink.arpresolver import ArpResolver
 from pong.support.serial import Serial
 
 from transactron.core import Method, TModule, Transaction, def_method 
@@ -125,7 +128,7 @@ class Pong(Elaboratable):
                 m.d.sync += dset.eq(0)
                 m.d.sync += sset.eq(0)
                 m.d.sync += ttet.eq(0)
-                m.d.sync += ledsg.eq(0)
+                #m.d.sync += ledsg.eq(0)
 
         eth_request = Method(o=REQUEST_LAYOUT)
         @def_method(m, eth_request)
@@ -143,30 +146,18 @@ class Pong(Elaboratable):
             #self.ethi.tx(m, data=0xfa, end=0) 
             ethout.start(m)
             m.d.sync += cnt.eq(cnt+1)
+
+        m.submodules.crcdiscard = crcdiscard = CRCDiscarder(ethi.rx)
+
+        ##### MMMM CHAINNNNNN
+        ######### ZLEWMASTER
+        m.submodules.parser = self.parser = Parser(crcdiscard.method_out)
+
+        m.submodules.zlew = arp_zlew_potezny = ArpResolver(SELFMAC, 0x10000801)
         
-
-        #with Transaction().body(m):
-        #    ethi.tx(m, ethi.rx(m))
-
-
-     #   cntrs = Signal()
-     #   with Transaction().body(m):
-     #       rx = ethi.rx(m)
-     #       with m.If(rx.end):
-     #           m.d.sync += cntrs.eq(1)
-     #    
-     #       with m.If(cntrs):
-     #           m.d.sync += ledsd.eq(1)
-     #           m.d.sync += cntrs.eq(0)
-     #       with m.Else():
-     #           m.d.sync += ledsd.eq(ledsd + 1)
-        with Transaction().body(m):
-            rx = ethi.rx(m)
-            send = Signal(8)
-            with m.If(rx.end):
-                m.d.comb += send.eq(0x2e)
-            with m.Else():
-                m.d.comb += send.eq(rx.data)
-            uart.tx(m, data=send)
-
+        self.parser.add_sink(0, arp_zlew_potezny)
+        
+        if platform is not None:
+            m.d.comb += ledsg.eq(arp_zlew_potezny.cnter) #type: ignore
+        
         return m

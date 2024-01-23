@@ -1,10 +1,12 @@
 from amaranth import *
+from pong.common import MY_IP, MY_MAC
 from pong.eth.crcdiscard import CRCDiscarder
 from pong.eth.frontend import EtherentInterface
 from pong.frontend.parser import Parser
-from pong.proto.eth import Ethertype
-from pong.proto.out.eth import REQUEST_LAYOUT, EthernetProtoOut, SELFMAC
-from pong.sink.arpresolver import ArpResolver
+from pong.source.arbiter import PriorityStreamArbiter
+from pong.sink.arpresolver import ArpCounter, ArpResolver
+from pong.source.ButtonSource import ButtonArpSource
+from pong.source.source import PacketSource
 from pong.support.serial import Serial
 
 from transactron.core import Method, TModule, Transaction, def_method 
@@ -101,25 +103,10 @@ class Pong(Elaboratable):
             leds = platform.request("led_r")
             ledsg = platform.request("led_g")
             bt = platform.request("button")
-            #m.d.comb += leds.eq(ethi.rx_fifo.r_level)
             dset = Signal()
             sset = Signal()
             ttet = Signal()
-            #if 0:
-            # with Transaction().body(m):
-            #     rx = ethi.rx(m).data
-            #     with m.If(~dset):
-            #         m.d.sync += ledsd.eq(rx)
-            #         m.d.sync += dset.eq(1)
-            #     with m.Elif(~sset):
-            #         m.d.sync += ledsd.eq(ledsd | (rx<<8))
-            #         m.d.sync += sset.eq(1)
-            #     with m.Elif(~ttet):
-            #         m.d.sync += ledsg.eq(rx)
-            #         m.d.sync += ttet.eq(1)
-            #         m.d.sync += dset.eq(0)
-            #         m.d.sync += sset.eq(0)
-            #         m.d.sync += ttet.eq(0)
+  
             m.d.comb += leds.eq(ledsd)
             
             with m.If(bt.i):
@@ -130,34 +117,28 @@ class Pong(Elaboratable):
                 m.d.sync += ttet.eq(0)
                 #m.d.sync += ledsg.eq(0)
 
-        eth_request = Method(o=REQUEST_LAYOUT)
-        @def_method(m, eth_request)
-        def _():
-            return {"data":0, "end":1}
-
-        m.submodules.ethout = ethout = EthernetProtoOut(push=ethi.tx, request=eth_request)
-        
-        cnt = Signal(32)
-        m.d.comb += ethout.dest_mac.eq(-1)
-        m.d.comb += ethout.source_mac.eq(SELFMAC+cnt)
-        m.d.comb += ethout.ethertype.eq(Ethertype.ARP)
-        
-        with Transaction().body(m, request=btsig):
-            #self.ethi.tx(m, data=0xfa, end=0) 
-            ethout.start(m)
-            m.d.sync += cnt.eq(cnt+1)
-
-        m.submodules.crcdiscard = crcdiscard = CRCDiscarder(ethi.rx)
-
-        ##### MMMM CHAINNNNNN
         ######### ZLEWMASTER
+        m.submodules.crcdiscard = crcdiscard = CRCDiscarder(ethi.rx)
         m.submodules.parser = self.parser = Parser(crcdiscard.method_out)
 
-        m.submodules.zlew = arp_zlew_potezny = ArpResolver(SELFMAC, 0x10000801)
+        m.submodules.zlew = arp_zlew_potezny = ArpResolver(MY_MAC, MY_IP) 
+        m.submodules.ctr = arp_ctr = ArpCounter()
         
+        # SINKS
         self.parser.add_sink(0, arp_zlew_potezny)
+        self.parser.add_sink(1, arp_ctr)
+        
+
+        # SOURCES
+        m.submodules.btn_arp = btn_arp = ButtonArpSource(btsig)
+        sources: list[PacketSource] = [
+            arp_zlew_potezny,
+            btn_arp
+        ] 
+        m.submodules.tx_arbiter = PriorityStreamArbiter([s.out for s in sources], ethi.tx) 
+    
         
         if platform is not None:
-            m.d.comb += ledsg.eq(arp_zlew_potezny.cnter) #type: ignore
+            m.d.comb += ledsg.eq(arp_ctr.cnter) #type: ignore
         
         return m

@@ -2,7 +2,7 @@
 
 from amaranth import *
 from amaranth.sim import Settle, Simulator
-from pong.common import RX_LAYOUT
+from pong.common import STREAM_LAYOUT
 from pong.eth.crcdiscard import CRCDiscarder
 from pong.frontend.parser import Parser
 
@@ -15,7 +15,7 @@ from transactron.utils.amaranth_ext.elaboratables import ModuleConnector
 
 class MockArpSink(Elaboratable, PacketSink):
     def __init__(self) -> None:
-        self.ctors()
+        self.sink_ctors()
         self.en = Signal()
         self.arp_sha = Signal(3*16)
         self.taken = Signal()
@@ -36,7 +36,7 @@ class MockArpSink(Elaboratable, PacketSink):
 
 sink1 = MockArpSink()
 
-source = TestbenchIO(Adapter(o=RX_LAYOUT))
+source = TestbenchIO(Adapter(o=STREAM_LAYOUT))
 crcdiscard = CRCDiscarder(source.adapter.iface)
 parser = Parser(crcdiscard.method_out)
 parser.add_sink(0, sink1)

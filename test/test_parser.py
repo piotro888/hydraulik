@@ -2,7 +2,7 @@
 
 from amaranth import *
 from amaranth.sim import Settle, Simulator
-from pong.common import RX_LAYOUT
+from pong.common import STREAM_LAYOUT
 from pong.frontend.parser import Parser
 
 from pong.sink.sink import PacketSink
@@ -14,7 +14,7 @@ from transactron.utils.amaranth_ext.elaboratables import ModuleConnector
 
 class MockSink(Elaboratable, PacketSink):
     def __init__(self) -> None:
-        self.ctors()
+        self.sink_ctors()
         self.en = Signal()
         self.ready = Signal()
         self.arp_sha = Signal(3*16)
@@ -39,7 +39,7 @@ sink2 = MockSink()
 sink3 = MockSink()
 sink4 = MockSink()
 
-source = TestbenchIO(Adapter(o=RX_LAYOUT))
+source = TestbenchIO(Adapter(o=STREAM_LAYOUT))
 parser = Parser(source.adapter.iface)
 parser.add_sink(0, sink1)
 parser.add_sink(0, sink2)

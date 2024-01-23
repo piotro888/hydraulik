@@ -1,4 +1,5 @@
 from amaranth import *
+from pong.proto.out.proto_out import ProtoOut
 from pong.utils.crc import CRC
 from transactron import *
 from pong.proto.eth import Ethertype
@@ -13,7 +14,7 @@ MIN_PAYLOAD_LEN = 46
 REQUEST_LAYOUT = [("data",8), ("end", 1)]
 PUSH_LAYOUT = [("data", 8), ("end", 1)]
 
-class EthernetProtoOut(Elaboratable):
+class EthernetProtoOut(Elaboratable, ProtoOut):
     def __init__(self, request: Method, push: Method):
         self.push = push 
         self.request = request

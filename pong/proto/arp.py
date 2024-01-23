@@ -16,7 +16,7 @@ class ArpProto(ProtoIn, Elaboratable):
     ]
 
     def __init__(self):
-        self.ctor()
+        self.proto_in_ctors()
 
     def elaborate(self, platform):
         m = TModule()

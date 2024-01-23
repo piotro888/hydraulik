@@ -1,6 +1,6 @@
 from amaranth import *
 from amaranth.lib.enum import IntEnum
-from pong.common import RX_LAYOUT
+from pong.common import STREAM_LAYOUT
 from pong.utils.endian import endian_reverse
 from transactron import *
 from pong.proto.proto_in import ProtoIn
@@ -26,8 +26,8 @@ class EthernetProto(Elaboratable, ProtoIn):
     ]
 
     def __init__(self):
-        self.ctor()
-        self.forward_connector = ConnectForward(layout=RX_LAYOUT)
+        self.proto_in_ctors()
+        self.forward_connector = ConnectForward(layout=STREAM_LAYOUT)
         self.forward = self.forward_connector.read
 
     def elaborate(self, module):

@@ -1,5 +1,5 @@
 from amaranth import *
-from pong.common import RX_LAYOUT
+from pong.common import STREAM_LAYOUT
 from transactron.core import Method, TModule, Transaction, def_method
 from transactron.lib.connectors import Forwarder
 from transactron.lib.simultaneous import condition
@@ -7,14 +7,14 @@ from transactron.lib.simultaneous import condition
 class CRCDiscarder(Elaboratable):
     def __init__(self, method_in: Method):
         self.method_in = method_in
-        self.method_out = Method(o=RX_LAYOUT)
+        self.method_out = Method(o=STREAM_LAYOUT)
         
-        self.buff0 = Record(RX_LAYOUT)
-        self.buff1 = Record(RX_LAYOUT)
-        self.buff2 = Record(RX_LAYOUT)
-        self.buff3 = Record(RX_LAYOUT)
+        self.buff0 = Record(STREAM_LAYOUT)
+        self.buff1 = Record(STREAM_LAYOUT)
+        self.buff2 = Record(STREAM_LAYOUT)
+        self.buff3 = Record(STREAM_LAYOUT)
 
-        self.fwd = Forwarder(RX_LAYOUT)
+        self.fwd = Forwarder(STREAM_LAYOUT)
 
     def elaborate(self, platform):
         m = TModule()

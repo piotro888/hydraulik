@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 from amaranth import *
 from amaranth.hdl.ir import reduce
 from amaranth.lib.enum import operator
+from pong.frontend.packetdatamem import PacketDataMem
 from pong.proto.arp import ArpProto
 from pong.proto.eth import EthernetProto, Ethertype
 from pong.proto.ipv4 import IPV4_PROTO_UDP, IPv4Proto
@@ -26,6 +27,7 @@ class Parser(Elaboratable):
         self.parp = ArpProto()
         self.pipv4 = IPv4Proto()
         self.pudp = UdpProto() 
+        self.pmem = PacketDataMem() 
         
         self.sinks: dict[int, list["PacketSink"]] = {}
 
@@ -130,18 +132,30 @@ class Parser(Elaboratable):
                 with m.Default():
                     m.d.comb += packet_drop_stub.eq(stage2_ipv4_sel)
 
+        #### STAGE 4
+        m.submodules.packet_mem = pmem = self.pmem
+        pmem_write_c = Signal()
         with Transaction().body(m):
-            pudp.forward(m) # data drop
+            m.d.comb += pmem_write_c.eq(1)
+            self.pmem.sink(m, pudp.forward(m))
+        pmem_write = pmem_write_c | (pmem.level != 0)
+
 
         ## SINK INSERTION
         done = self._sink_do(m, (packet_done & (~packet_drop_stub)) | (packet_drop_stub & packet_done))
         
+        auto_unstall = Signal()
         with Transaction().body(m, request=done):
-            m.d.sync += stall.eq(0)
+            m.d.sync += stall.eq(pmem_write) # don't unstall if working with memory
+            m.d.sync += auto_unstall.eq(pmem_write)
             self.peth.clear(m)
             self.parp.clear(m)
             self.pipv4.clear(m)
             self.pudp.clear(m)
+
+        with m.If(stall & auto_unstall & ~pmem_write):
+            m.d.sync += stall.eq(0)
+            m.d.sync += auto_unstall.eq(0)
 
         return m
 

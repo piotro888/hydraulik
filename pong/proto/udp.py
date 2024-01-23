@@ -43,8 +43,8 @@ class UdpProto(Elaboratable, ProtoIn):
                     octet_count == endian_reverse(m, header.bit_select(32, 16))
                 )
             
-            #with m.If(fwd):
-            #    self.forward_connector.write(m, data=data, end=end)    
+            with m.If(fwd):
+                self.forward_connector.write(m, data=data, end=end)    
 
         @def_method(m, self.get)
         def _():

@@ -47,7 +47,17 @@ dut = TransactionModule(ModuleConnector(io=source, s1=sink1, crc=crcdiscard, dut
 cnt = 0
 idx = 0
 
+udp_pkt = "01005e7ffffa000ec6e2420e0800450000c305be40000111716a0a000808effffffa82d0076c00af02c34d2d534541524348202a20485454502f312e310d0a484f53543a203233392e3235352e3235352e3235303a313930300d0a4d414e3a2022737364703a646973636f766572220d0a4d583a20310d0a53543a2075726e3a6469616c2d6d756c746973637265656e2d6f72673a736572766963653a6469616c3a310d0a555345522d4147454e543a204368726f6d69756d2f3131312e302e353536332e3635204c696e75780d0a0d0acccccccc"
+
+def str_pkt_to_arr(s: str) -> list[int]:
+    res = []
+    for i in range(len(s)//2):
+        hex = udp_pkt[2*i:2*i+2]
+        res.append(int(hex, 16))
+    return res
+
 pkts = [ [0xff, 0xff, 0xff],
+        str_pkt_to_arr(udp_pkt),
             [   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x0e, 0xc6, 0xe2, 0x42, 0x0e, 0x08, 0x06, 0x00, 0x01,
   0x08, 0x00, 0x06, 0x04, 0x00, 0x01, 0x00, 0x0e, 0xc6, 0xe2, 0x42, 0x0e, 0x0a, 0x00, 0x08, 0x08,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x08, 0x01, 
@@ -57,7 +67,7 @@ pkts = [ [0xff, 0xff, 0xff],
 ]
 print(len(pkts[1]))
 
-@def_method_mock(lambda: source, enable=lambda: cnt < 2)
+@def_method_mock(lambda: source, enable=lambda: cnt < len(pkts))
 def req_mock():
     global cnt, idx
     pkt = pkts[cnt]
@@ -78,7 +88,7 @@ def req_mock():
     }
 
 def active():
-    for _ in range(100):
+    for _ in range(1000):
         yield # push pkt, none ready
     
 sim = Simulator(dut)

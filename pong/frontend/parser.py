@@ -4,6 +4,8 @@ from amaranth.hdl.ir import reduce
 from amaranth.lib.enum import operator
 from pong.proto.arp import ArpProto
 from pong.proto.eth import EthernetProto, Ethertype
+from pong.proto.ipv4 import IPV4_PROTO_UDP, IPv4Proto
+from pong.proto.udp import UdpProto
 from transactron.core import *
 from transactron.utils.amaranth_ext.elaboratables import OneHotSwitchDynamic
 
@@ -22,6 +24,8 @@ class Parser(Elaboratable):
         
         self.peth = EthernetProto()
         self.parp = ArpProto()
+        self.pipv4 = IPv4Proto()
+        self.pudp = UdpProto() 
         
         self.sinks: dict[int, list["PacketSink"]] = {}
 
@@ -100,15 +104,34 @@ class Parser(Elaboratable):
         #### STAGE 2
 
         m.submodules.parp = parp = self.parp 
+        m.submodules.ipv4 = pipv4 = self.pipv4
+        stage2_ipv4_sel = Signal()
         with Transaction().body(m):
             ethertype = peth.get(m).type
             fwd = peth.forward(m)
             with m.Switch(ethertype):
                 with m.Case(Ethertype.ARP):
                     parp.push(m, fwd)
+                with m.Case(Ethertype.IPV4):
+                    pipv4.push(m, fwd)
+                    m.d.comb += stage2_ipv4_sel.eq(1)
                 with m.Default():
                     m.d.comb += packet_drop_stub.eq(1)
+        
+        #### STAGE 3
 
+        m.submodules.udp = pudp = self.pudp
+        with Transaction().body(m):
+            proto = pipv4.get(m).protocol
+            fwd = pipv4.forward(m)
+            with m.Switch(proto):
+                with m.Case(IPV4_PROTO_UDP):
+                    pudp.push(m, fwd)
+                with m.Default():
+                    m.d.comb += packet_drop_stub.eq(stage2_ipv4_sel)
+
+        with Transaction().body(m):
+            pudp.forward(m) # data drop
 
         ## SINK INSERTION
         done = self._sink_do(m, (packet_done & (~packet_drop_stub)) | (packet_drop_stub & packet_done))
@@ -117,6 +140,8 @@ class Parser(Elaboratable):
             m.d.sync += stall.eq(0)
             self.peth.clear(m)
             self.parp.clear(m)
+            self.pipv4.clear(m)
+            self.pudp.clear(m)
 
         return m
 

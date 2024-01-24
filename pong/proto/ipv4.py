@@ -10,13 +10,15 @@ MAX_LEN = 20*8
 
 IPV4_PROTO_UDP = 17
 
+IP_LEN = 4*8
+
 class IPv4Proto(Elaboratable, ProtoIn):
     GET_LAYOUT = [
             ("protocol", 8),
             ("length", 16),
             ("ttl", 8),
-            ("src_addr", 4*8),
-            ("dst_addr", 4*8),
+            ("src_addr", IP_LEN),
+            ("dst_addr", IP_LEN),
             ("valid", 1)
     ]
 
@@ -37,6 +39,7 @@ class IPv4Proto(Elaboratable, ProtoIn):
 
         # ENDIANNES IN BYTE FIEDLDS IS ALSO SWAPPED
         ihl = header.bit_select(4-4, 4)*4
+        hdr_plus_data_length = endian_reverse(m, header.bit_select(16,16))
 
         @def_method(m, self.push)
         def _(data, end):
@@ -48,17 +51,21 @@ class IPv4Proto(Elaboratable, ProtoIn):
                     with m.If((octet_count > 2) & (octet_count == ihl-1)):
                         m.d.sync += in_header.eq(0)
                 with m.Else():
+                    # ethernet has its minimum size, which ipv4 can overwritte - drop all runt-frame fill zeroes,
+                    # to not break expectations of underlying protocols
+                    # this is also why octet_count can be higher than len and frame is valid
+                    with m.If(octet_count < hdr_plus_data_length):
+                        m.d.comb += fwd.eq(1)
                     m.d.sync += octet_count.eq(octet_count+1)
-                    m.d.comb += fwd.eq(1)
             with m.Else():
                 m.d.comb += fwd.eq(1)
                 m.d.sync += in_header.eq(1)
                 # not the endian swap inside 8 bit fields!
                 m.d.sync += valid.eq(
                     (header.bit_select(4-0, 4) == 4) & # v4
-                    ((header.bit_select(32+24, 16) | header.bit_select(32+16, 5)) == 0) & # 0 frag ofset
+                    ((header.bit_select(32+24, 8) | header.bit_select(32+16, 5)) == 0) & # 0 frag ofset
                     (header.bit_select(2*32+0, 8) != 0) & # TTL
-                    (endian_reverse(m, header.bit_select(16, 16)) == octet_count) # len
+                    (endian_reverse(m, header.bit_select(16, 16)) <= octet_count) # len
                     # TODO : CS
                 )
             

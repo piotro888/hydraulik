@@ -64,7 +64,7 @@ class ArpResolver(Elaboratable, ZlewZDiura):
         # SINK
         @def_method(m, self.filter)
         def _(arg):
-            return arg.eth.valid & arg.arp.valid & (arg.arp.tpa == self.ip_addr)
+            return arg.eth.valid & arg.arp.valid & (arg.arp.tpa == self.ip_addr) & (arg.arp.oper == 1)
         
         @def_method(m, self.take)
         def _(arg):

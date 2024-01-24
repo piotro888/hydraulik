@@ -1,8 +1,10 @@
 from amaranth import *
+from amaranth.lib.cdc import ResetSynchronizer
 from pong.common import MY_IP, MY_MAC
 from pong.eth.crcdiscard import CRCDiscarder
 from pong.eth.frontend import EtherentInterface
 from pong.frontend.parser import Parser
+from pong.sink.udprepeater import UdpRepeater
 from pong.source.arbiter import PriorityStreamArbiter
 from pong.sink.arpresolver import ArpCounter, ArpResolver
 from pong.source.ButtonSource import ButtonArpSource
@@ -111,21 +113,24 @@ class Pong(Elaboratable):
             
             with m.If(bt.i):
                 m.d.comb += btsig.eq(1)
-                m.d.sync += ledsd.eq(0)
+               # m.d.sync += ledsd.eq(0)
                 m.d.sync += dset.eq(0)
                 m.d.sync += sset.eq(0)
                 m.d.sync += ttet.eq(0)
                 #m.d.sync += ledsg.eq(0)
-
+            
+            bt2 = platform.request("button", 1)
         ######### ZLEWMASTER
         m.submodules.crcdiscard = crcdiscard = CRCDiscarder(ethi.rx)
         m.submodules.parser = self.parser = Parser(crcdiscard.method_out)
 
         m.submodules.zlew = arp_zlew_potezny = ArpResolver(MY_MAC, MY_IP) 
         m.submodules.ctr = arp_ctr = ArpCounter()
-        
+        m.submodules.udpr = udp_repeater = UdpRepeater(6969, self.parser.pmem)
+
         # SINKS
         self.parser.add_sink(0, arp_zlew_potezny)
+        self.parser.add_sink(1, udp_repeater)
         self.parser.add_sink(1, arp_ctr)
         
 
@@ -133,12 +138,15 @@ class Pong(Elaboratable):
         m.submodules.btn_arp = btn_arp = ButtonArpSource(btsig)
         sources: list[PacketSource] = [
             arp_zlew_potezny,
-            btn_arp
+            udp_repeater,
+            btn_arp,
         ] 
         m.submodules.tx_arbiter = PriorityStreamArbiter([s.out for s in sources], ethi.tx) 
     
         
         if platform is not None:
-            m.d.comb += ledsg.eq(arp_ctr.cnter) #type: ignore
+            #m.d.comb += ledsg.eq(arp_ctr.cnter) #type: ignore
+            m.d.comb += ledsg.eq(udp_repeater.counter) #type: ignore
+            m.d.comb += ledsd.eq((self.parser.pmem.read_idx<<8) | self.parser.pmem.level)
         
         return m

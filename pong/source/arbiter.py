@@ -19,6 +19,8 @@ class PriorityStreamArbiter(Elaboratable):
         selected = Signal(range(len(self.inputs)))
         next_select = Signal.like(selected)
 
+        # TODO: 2 cycle delay - opt to 1 cycle
+
         for i, input in reversed(list(enumerate(self.inputs))):
             with m.If(input.ready):
                 m.d.comb += next_select.eq(i)

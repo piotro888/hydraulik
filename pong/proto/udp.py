@@ -5,10 +5,12 @@ from transactron import *
 from pong.proto.proto_in import ProtoIn
 from transactron.lib.connectors import ConnectForward
 
+UDP_PORT_LEN = 16
+
 class UdpProto(Elaboratable, ProtoIn):
     GET_LAYOUT = [
-            ("src_port", 16),
-            ("dst_port", 16),
+            ("src_port", UDP_PORT_LEN),
+            ("dst_port", UDP_PORT_LEN),
             ("length", 16),
             ("checksum", 16),
             ("valid", 1)

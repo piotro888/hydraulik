@@ -55,7 +55,6 @@ class CRC(Elaboratable):
             for i, e in enumerate(CRC_TABLE):
                 elements = [crc.bit_select(x, 1) for x in e]
                 elements += [(data.bit_select(x, 1) if x < 8 else 0) for x in e]
-                print(i, elements)
                 entry = reduce(operator.xor, elements)
                 m.d.comb += new_crc.bit_select(i, 1).eq(entry)
             m.d.sync += crc.eq(new_crc)

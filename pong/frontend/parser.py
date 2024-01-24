@@ -17,6 +17,8 @@ class Parser(Elaboratable):
     GET_LAYOUT = [
         ("eth", EthernetProto.GET_LAYOUT),
         ("arp", ArpProto.GET_LAYOUT),
+        ("ipv4", IPv4Proto.GET_LAYOUT),
+        ("udp", UdpProto.GET_LAYOUT),
     ]
 
 
@@ -40,10 +42,12 @@ class Parser(Elaboratable):
         with Transaction().body(m):
             return {
                 "eth": self.peth.get(m),
-                "arp": self.parp.get(m)
+                "arp": self.parp.get(m),
+                "ipv4": self.pipv4.get(m),
+                "udp": self.pudp.get(m),
             }
 
-    def _sink_do(self, m: TModule, packet_done: Value) -> Signal:
+    def _sink_do(self, m: TModule, packet_done: Value) -> dict[str, Signal]:
         data = self._get_data_dict(m)
 
         max_prio = max(self.sinks.keys())
@@ -85,7 +89,7 @@ class Parser(Elaboratable):
         with m.If(nobody_wants_me & packet_done): # :CCCCCC
             m.d.comb += done.eq(1)
 
-        return done
+        return {"done": done, "nobody_wants_me": nobody_wants_me }
                
     def elaborate(self, platform):
         m = TModule()
@@ -138,16 +142,22 @@ class Parser(Elaboratable):
         with Transaction().body(m):
             m.d.comb += pmem_write_c.eq(1)
             self.pmem.sink(m, pudp.forward(m))
+
         pmem_write = pmem_write_c | (pmem.level != 0)
 
 
         ## SINK INSERTION
-        done = self._sink_do(m, (packet_done & (~packet_drop_stub)) | (packet_drop_stub & packet_done))
-        
         auto_unstall = Signal()
-        with Transaction().body(m, request=done):
+        done = self._sink_do(m, ((packet_done & (~packet_drop_stub)) | (packet_drop_stub & packet_done)) & ~auto_unstall)
+        
+        with Transaction().body(m, request=done["done"]):
             m.d.sync += stall.eq(pmem_write) # don't unstall if working with memory
             m.d.sync += auto_unstall.eq(pmem_write)
+            with m.If(pmem_write & done["nobody_wants_me"]): # but clean up if noone would do that
+                self.pmem.reset(m)
+                m.d.sync += stall.eq(0)
+                m.d.sync += auto_unstall.eq(0)
+
             self.peth.clear(m)
             self.parp.clear(m)
             self.pipv4.clear(m)

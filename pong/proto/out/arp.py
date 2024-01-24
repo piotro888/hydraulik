@@ -1,11 +1,12 @@
 from amaranth import *
+from pong.proto.out.proto_out import ProtoOut
 from transactron import *
 
 PACKET_LEN = 28
 
-class ArpProtoOut(Elaboratable):
+class ArpProtoOut(Elaboratable, ProtoOut):
     def __init__(self):
-        self.push = Method(o=[("data",8), ("end",1)])
+        self.proto_out_ctors()
         
         self.opcode = Signal(16)
         self.sender_pa = Signal(2*16)

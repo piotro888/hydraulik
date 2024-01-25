@@ -14,8 +14,10 @@ class DE2_115Platform(IntelPlatform):
     package = "F29"
     speed = "C7"
     default_clk = "clk50"
+    default_rst = "rst"
 
     resources = [
+        Resource("rst", 0, PinsN("M21", dir="i"), Attrs(io_standard="2.5 V")),
         Resource("clk50", 0, Pins("Y2", dir="i"),
             Clock(50e6), Attrs(io_standard="3.3-V LVTTL")),
         Resource("clk50", 1, Pins("AG14", dir="i"), 
@@ -45,7 +47,7 @@ class DE2_115Platform(IntelPlatform):
         Resource("led_g", 0, Pins("E21 E22 E25 E24 H21 G20 G22 G21 F17", dir="o"), Attrs(io_standard="2.5 V")),
 
         *ButtonResources(
-            pins="M23 M21 N21 R24", invert=True,
+            pins="M23 N21 R24", invert=True,
             attrs=Attrs(io_standard="2.5 V")),
 
         *SwitchResources(

@@ -15,4 +15,6 @@ class Top(Elaboratable):
 
 if __name__ == "__main__":
     plat = DE2_115Platform()
+    with open("pong/modules/ppcpu_soc.v") as f:
+        plat.add_file("pong/modules/ppcpu_soc.v", f.read())
     plat.build(Top(), do_program=True)

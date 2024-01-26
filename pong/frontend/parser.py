@@ -7,6 +7,7 @@ from pong.proto.arp import ArpProto
 from pong.proto.eth import EthernetProto, Ethertype
 from pong.proto.ipv4 import IPV4_PROTO_UDP, IPv4Proto
 from pong.proto.udp import UdpProto
+from pong.proto.ntp import NtpProto
 from transactron.core import *
 from transactron.utils.amaranth_ext.elaboratables import OneHotSwitchDynamic
 
@@ -19,6 +20,7 @@ class Parser(Elaboratable):
         ("arp", ArpProto.GET_LAYOUT),
         ("ipv4", IPv4Proto.GET_LAYOUT),
         ("udp", UdpProto.GET_LAYOUT),
+        ("ntp", NtpProto.GET_LAYOUT),
     ]
 
 
@@ -29,6 +31,7 @@ class Parser(Elaboratable):
         self.parp = ArpProto()
         self.pipv4 = IPv4Proto()
         self.pudp = UdpProto() 
+        self.pntp = NtpProto() 
         self.pmem = PacketDataMem() 
         
         self.sinks: dict[int, list["PacketSink"]] = {}
@@ -45,6 +48,7 @@ class Parser(Elaboratable):
                 "arp": self.parp.get(m),
                 "ipv4": self.pipv4.get(m),
                 "udp": self.pudp.get(m),
+                "ntp": self.pntp.get(m),
             }
 
     def _sink_do(self, m: TModule, packet_done: Value) -> dict[str, Signal]:
@@ -139,10 +143,17 @@ class Parser(Elaboratable):
 
         #### STAGE 4
         m.submodules.packet_mem = pmem = self.pmem
+        m.submodules.ntp = pntp = self.pntp
         pmem_write_c = Signal()
         with Transaction().body(m):
-            m.d.comb += pmem_write_c.eq(1)
-            self.pmem.sink(m, pudp.forward(m))
+            dp = pudp.get(m).dst_port
+            fwd = pudp.forward(m)
+            with m.Switch(dp):
+                with m.Case(123):
+                    pntp.push(m, fwd) 
+                with m.Default():
+                    m.d.comb += pmem_write_c.eq(1)
+                    self.pmem.sink(m, fwd)
 
         pmem_write = pmem_write_c | (pmem.level != 0)
 
@@ -162,6 +173,7 @@ class Parser(Elaboratable):
             self.parp.clear(m)
             self.pipv4.clear(m)
             self.pudp.clear(m)
+            self.pntp.clear(m)
 
         with m.If(stall & auto_unstall & ~pmem_write):
             m.d.sync += stall.eq(0)

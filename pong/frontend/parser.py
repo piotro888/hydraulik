@@ -100,7 +100,8 @@ class Parser(Elaboratable):
         packet_done = Signal() 
         packet_drop_stub = Signal()
 
-        m.d.comb += packet_done.eq(stall) # for now it is true - pure comb (with intentional one cycle break)
+        auto_unstall = Signal()
+        m.d.comb += packet_done.eq(stall & ~auto_unstall) # for now it is true - pure comb (with intentional one cycle break)
         with Transaction().body(m, request=~stall):
             in_pkt = self.accept(m)
             peth.push(m, in_pkt)
@@ -147,7 +148,6 @@ class Parser(Elaboratable):
 
 
         ## SINK INSERTION
-        auto_unstall = Signal()
         done = self._sink_do(m, ((packet_done & (~packet_drop_stub)) | (packet_drop_stub & packet_done)) & ~auto_unstall)
         
         with Transaction().body(m, request=done["done"]):

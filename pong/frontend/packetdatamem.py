@@ -14,7 +14,7 @@ class PacketDataMem(Elaboratable):
         
         self.sink = Method(i=STREAM_LAYOUT)
         self.reset = Method()
-        self.source = Method(o=STREAM_LAYOUT)
+        self.source = Method(o=STREAM_LAYOUT, nonexclusive=True) # One call a time should be garenteed by take logic. This will unblock Transaction conflicts instead.
 
         self.iface_read = Method(i=[("addr", 11)])
         self.iface_read_resp = Method(o=[("data", 8)])

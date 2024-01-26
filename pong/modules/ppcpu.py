@@ -8,6 +8,7 @@ class PPCPUWrapper(Elaboratable):
         self.uart_tx = Signal(1)
         self.pc_leds = Signal(18)
         self.dbg_r0 = Signal(16)
+        self.irq = Signal()
         
         self.ppcpu = Instance("ppcpu_soc",
             ("i", "i_clk", ClockSignal()),
@@ -20,11 +21,12 @@ class PPCPUWrapper(Elaboratable):
             ("o", "hw_cyc", wba.cyc),
             ("o", "hw_stb", wba.stb),
             ("o", "hw_adr", wba.addr),
-            ("i", "hw_we", wba.we),
+            ("o", "hw_we", wba.we),
             ("i", "hw_i_data", wba.data_r),
             ("o", "hw_o_data", wba.data_w),
             ("i", "hw_ack", wba.ack),
             ("i", "hw_err", wba.err),
+            ("i", "hw_irq", self.irq), 
 
         )
 

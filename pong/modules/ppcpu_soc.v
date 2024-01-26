@@ -67,6 +67,7 @@ input wire [15:0] hw_i_data,
 output wire [15:0] hw_o_data,
     input wire hw_ack,
     input wire hw_err,
+    input wire hw_irq,
     /*
     input wire i_hydr_irq,
     output wire o_hydr_wb_cyc,
@@ -282,41 +283,53 @@ sdram sdram (
     .dr_dq(dr_dq)
 );*/
 
-wire [`WB_DATA_W-1:0] cpu_ram_data;
+wire [`WB_DATA_W-1:0] cpu_ram0_data;
 reg cpu_ram0_active;
+
+wire cpu_req0 = wb_cyc & wb_stb & cpu_ram0_active & ~cpu_req0_ack;
+reg prev_cpu_req0;
+reg cpu_req0_ack;
+always @(posedge cw_clk) begin
+    prev_cpu_req0 <= cpu_req0;
+    cpu_req0_ack <= 1'b0;
+    if (prev_cpu_req0 & cpu_req0 & ~cpu_req0_ack) begin
+        cpu_req0_ack <= 1'b1;
+        prev_cpu_req0 <= 1'b0;
+    end
+end
+
 cpu_ram cpu_ram0 (
-    .address(wb_adr),
+    .address(wb_adr[15:0]),
     .clock(cw_clk),
     .data(wb_o_dat),
-    .wren(wb_we & wb_cyc & wb_stb & cpu_ram0_active),
-    .q(cpu_ram_data),
+    .wren(wb_we & cpu_req0),
+    .q(cpu_ram0_data),
     .byteena(wb_sel)
 );
 
-wire cpu_req0_active = wb_cyc & wb_stb & cpu_ram0_active;
-reg prev_cpu_reg0_active;
-wire cpu_req0_ack = cpu_req0_active & prev_cpu_reg0_active;
-always @(posedge cw_clk) begin
-    prev_cpu_reg0_active <= cpu_req0_active;
-end
-
-wire [`WB_DATA_W-1:0] cpu1_ram_data;
+wire [`WB_DATA_W-1:0] cpu_ram1_data;
 reg cpu_ram1_active;
+
+wire cpu_req1 = wb_cyc & wb_stb & cpu_ram1_active & ~cpu_req1_ack;
+reg prev_cpu_req1;
+reg cpu_req1_ack;
+always @(posedge cw_clk) begin
+    prev_cpu_req1 <= cpu_req1;
+    cpu_req1_ack <= 1'b0;
+    if (prev_cpu_req1 & cpu_req1 & ~cpu_req1_ack) begin
+        cpu_req1_ack <= 1'b1;
+        prev_cpu_req1 <= 1'b0;
+    end
+end
+
 cpu_ram cpu_ram1 (
-    .address(wb_adr),
+    .address(wb_adr[15:0]),
     .clock(cw_clk),
     .data(wb_o_dat),
-    .wren(wb_we & wb_cyc & wb_stb & cpu_ram1_active),
-    .q(cpu1_ram_data),
+    .wren(wb_we & cpu_req1),
+    .q(cpu_ram1_data),
     .byteena(wb_sel)
 );
-
-wire cpu_req1_active = wb_cyc & wb_stb & cpu_ram1_active;
-reg prev_cpu_reg1_active;
-wire cpu_req1_ack = cpu_req1_active & prev_cpu_reg1_active;
-always @(posedge cw_clk) begin
-    prev_cpu_reg1_active <= cpu_req1_active;
-end
 //assign dr_clk = ~cw_clk;//i_clk; // ram controller depends on setting edges half cycle before ram
 
 wire [`RW-1:0] rom_data;
@@ -363,13 +376,12 @@ timer timer (
 
 wire m_irq, irqc_wb_ack;
 wire [`WB_DATA_W-1:0] irqc_wb_i_dat;
-wire hydr_irq = 1'b0;
 irq_ctrl irq_ctrl (
     .i_clk(cw_clk),
     .i_rst(d_rst),
 
     .o_irq(m_irq),
-    .i_irq({13'b0, hydr_irq, 1'b0, timer_irq}),
+    .i_irq({13'b0, hw_irq, 1'b0, timer_irq}),
 
     .wb_cyc(wb_cyc),
     .wb_stb(wb_stb & (wb_adr >= IRQC_BASE && wb_adr <= IRQC_END)),
@@ -391,12 +403,12 @@ always @(*) begin
     hw_stb = 1'b0;
     if (wb_adr >= SDRAM_BASE) begin
         if ((wb_adr >= SDRAM0_BASE) && (wb_adr <= SDRAM0_END)) begin
-            wb_i_dat = cpu_ram_data;
+            wb_i_dat = cpu_ram0_data;
             wb_ack = cpu_req0_ack;
             wb_err = 1'b0;
             cpu_ram0_active = 1'b1;
         end else if ((wb_adr >= SDRAM1_BASE) && (wb_adr <= SDRAM1_END)) begin
-            wb_i_dat = cpu1_ram_data;
+            wb_i_dat = cpu_ram1_data;
             wb_ack = cpu_req1_ack;
             wb_err = 1'b0;
             cpu_ram1_active = 1'b1;

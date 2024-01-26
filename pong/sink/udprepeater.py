@@ -12,11 +12,13 @@ from transactron.core import Method, TModule, Transaction, def_method
 from transactron.lib.fifo import BasicFifo
 
 class UdpRepeater(Elaboratable, ZlewZDiura):
-    def __init__(self, port: int, pkt_mem: PacketDataMem):
+    def __init__(self, port: int, ip:int, mac:int, pkt_mem: PacketDataMem):
         self.zlew_ctors()
 
         self.pkt_mem = pkt_mem
         self.port = port
+        self.ip = ip
+        self.mac = mac
         
         self.counter = Signal(8)
         self.out_cont = BasicFifo(STREAM_LAYOUT, 2)
@@ -39,11 +41,11 @@ class UdpRepeater(Elaboratable, ZlewZDiura):
 
         def assign_source(m, arg):
             m.d.comb += eth.dest_mac.eq(arg.eth.source_mac)
-            m.d.comb += eth.source_mac.eq(MY_MAC)
+            m.d.comb += eth.source_mac.eq(self.mac)
             m.d.comb += eth.ethertype.eq(Ethertype.IPV4)
             m.d.comb += ipv4.ttl.eq(64)
             m.d.comb += ipv4.protocol.eq(IPV4_PROTO_UDP)
-            m.d.comb += ipv4.src_addr.eq(MY_IP)
+            m.d.comb += ipv4.src_addr.eq(self.ip)
             m.d.comb += ipv4.dst_addr.eq(arg.ipv4.src_addr)
             m.d.comb += ipv4.length.eq(arg.ipv4.length)
             m.d.comb += udp.source_port.eq(self.port)
@@ -58,8 +60,8 @@ class UdpRepeater(Elaboratable, ZlewZDiura):
 
             # Real fileter
             return (
-                    arg.eth.valid & (arg.eth.dest_mac == MY_MAC) & 
-                    arg.ipv4.valid & (arg.ipv4.dst_addr == MY_IP) &
+                    arg.eth.valid & ((arg.eth.dest_mac == self.mac) | (arg.eth.dest_mac == 0xffffffffffff)) & 
+                    arg.ipv4.valid & (arg.ipv4.dst_addr == self.ip) &
                     arg.udp.valid & (arg.udp.dst_port == self.port)
                 )
         

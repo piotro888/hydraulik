@@ -4,11 +4,15 @@ from pong.common import MY_IP, MY_MAC
 from pong.eth.crcdiscard import CRCDiscarder
 from pong.eth.frontend import EtherentInterface
 from pong.frontend.parser import Parser
+from pong.modules.ppcpu import PPCPUWrapper
+from pong.modules.wishbone_adapter import WishboneAdapter
 from pong.sink.udprepeater import UdpRepeater
+from pong.sink.wbsink import WishboneSink
 from pong.source.arbiter import PriorityStreamArbiter
 from pong.sink.arpresolver import ArpCounter, ArpResolver
 from pong.source.ButtonSource import ButtonArpSource
 from pong.source.source import PacketSource
+from pong.source.wbsource import WishboneSource
 from pong.support.serial import Serial
 
 from transactron.core import Method, TModule, Transaction, def_method 
@@ -26,6 +30,7 @@ class Pong(Elaboratable):
         m.submodules.eth0_i = ethi = self.ethi 
         m.submodules.eth1_i = ethi1 = EtherentInterface()
         m.submodules.uart = uart = Serial()
+
         
         if platform is not None:
             enet = platform.request("enet", 0)
@@ -71,7 +76,7 @@ class Pong(Elaboratable):
             m.d.comb += enet.tx_en.eq(ethi1.o_tx_valid)
             ### UART
             puart = platform.request("uart")
-            m.d.comb += puart.tx.eq(uart.o_tx)
+            #m.d.comb += puart.tx.eq(uart.o_tx)
         
         init = Signal(reset=1)
         btsig = Signal()
@@ -119,34 +124,50 @@ class Pong(Elaboratable):
                 m.d.sync += ttet.eq(0)
                 #m.d.sync += ledsg.eq(0)
             
-            bt2 = platform.request("button", 1)
         ######### ZLEWMASTER
         m.submodules.crcdiscard = crcdiscard = CRCDiscarder(ethi.rx)
         m.submodules.parser = self.parser = Parser(crcdiscard.method_out)
 
         m.submodules.zlew = arp_zlew_potezny = ArpResolver(MY_MAC, MY_IP) 
         m.submodules.ctr = arp_ctr = ArpCounter()
-        m.submodules.udpr = udp_repeater = UdpRepeater(6969, self.parser.pmem)
+        m.submodules.udpr = udp_repeater = UdpRepeater(6969, MY_IP, MY_MAC, self.parser.pmem)
+        m.submodules.wbsink = wbsink = WishboneSink(MY_MAC, 0x4100)
 
         # SINKS
         self.parser.add_sink(0, arp_zlew_potezny)
         self.parser.add_sink(1, udp_repeater)
         self.parser.add_sink(1, arp_ctr)
+        self.parser.add_sink(2, wbsink)
         
 
         # SOURCES
         m.submodules.btn_arp = btn_arp = ButtonArpSource(btsig)
+        m.submodules.wb_source = wb_source = WishboneSource(0x4000, self.parser.pmem)
         sources: list[PacketSource] = [
             arp_zlew_potezny,
             udp_repeater,
+            wb_source,
             btn_arp,
         ] 
         m.submodules.tx_arbiter = PriorityStreamArbiter([s.out for s in sources], ethi.tx) 
     
+        m.submodules.wba = wba = WishboneAdapter(mmap_devices=wbsink.mmap|wb_source.mmap)
+        m.submodules.ppcpu = self.ppcpu = PPCPUWrapper(wba) 
+        m.d.comb += self.ppcpu.irq.eq(wbsink.irq)
         
         if platform is not None:
-            #m.d.comb += ledsg.eq(arp_ctr.cnter) #type: ignore
+            m.d.comb += ledsg.eq(arp_ctr.cnter) #type: ignore
             m.d.comb += ledsg.eq(udp_repeater.counter) #type: ignore
             m.d.comb += ledsd.eq((self.parser.pmem.read_idx<<8) | self.parser.pmem.level)
+           
+            m.d.comb += puart.tx.eq(self.ppcpu.uart_tx)#type: ignore
+            m.d.comb += self.ppcpu.uart_rx.eq(puart.rx)#type: ignore
+
+            m.d.comb += ledsg.eq(Cat(wbsink.done.lock, wbsink.take.run, self.parser.pmem.level.any())) #type: ignore
+            m.d.comb += ledsd.eq(self.ppcpu.dbg_r0) 
+
         
+        print(wbsink.definestr)
+        print(wb_source.definestr)
+
         return m

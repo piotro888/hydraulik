@@ -32,12 +32,12 @@ class IPv4ProtoOut(Elaboratable, ProtoOut):
 
         checksum_step_1 = Signal(32)
         checksum_step_2 = Signal(16)
-        m.d.comb += checksum_step_1.eq(reduce(operator.add, [header.word_select(i, 8) for i in range(HDR_LEN//8)]))
-        m.d.comb += checksum_step_2.eq((checksum_step_1 & 0xFFFFFFFF) + (checksum_step_1 >> 32))
+        m.d.comb += checksum_step_1.eq(reduce(operator.add, [endian_reverse(m, header.word_select(i, 16)) for i in range(HDR_LEN//2)]))
+        m.d.comb += checksum_step_2.eq((checksum_step_1 & 0xFFFF) + (checksum_step_1 >> 16))
         m.d.sync += checksum.eq(~checksum_step_2)
 
         
-        header_w_checksum = header | (checksum << (2*32))
+        header_w_checksum = header | (endian_reverse(m, checksum) << (2*32))
 
         hdr_cnt = Signal(range(HDR_LEN+2))
 

@@ -311,6 +311,11 @@ class DE2_115Platform(IntelPlatform):
             Subsignal("wp",   PinsN("AE12", dir="o")),
             Attrs(io_standard="3.3-V LVTTL")),
 
+        # i give up
+        Resource("pps", 0,
+            Subsignal("pps", Pins("AB22", dir="i")),
+            Attrs(io_standard="3.3-V LVTTL")),
+
     ]
 
     connectors = [

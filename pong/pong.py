@@ -36,21 +36,11 @@ class Pong(Elaboratable):
         if platform is not None:
             enet = platform.request("enet", 0)
             soft_loopback = 0
-            reverse_loopback = 0
             if soft_loopback:
                 # OK
                 m.d.comb += ethi.i_rx_clk.eq(ethi.o_tx_clk)
                 m.d.comb += ethi.i_rx_valid.eq(ethi.o_tx_valid)
                 m.d.comb += ethi.i_rx_data.eq(ethi.o_tx_data)
-            elif reverse_loopback:
-                # NOT WORKINGGIGNIGNIRNIGSNRIGNIRSRNISGI
-                m.d.comb += enet.rst.eq(ResetSignal())
-                m.d.comb += enet.mdc.eq(mdio.o_mdc)
-                m.d.comb += enet.mdio.o.eq(mdio.o_mdio)
-                m.d.comb += enet.mdio.oe.eq(mdio.oe_mdio)
-                m.d.comb += enet.gtx_clk.eq(enet.rx_clk)
-                m.d.comb += enet.tx_data.eq(enet.rx_data)
-                m.d.comb += enet.tx_en.eq(enet.rx_dv)
             else:
                 m.d.comb += enet.mdc.eq(mdio.o_mdc)
                 m.d.comb += enet.mdio.o.eq(mdio.o_mdio)
@@ -59,7 +49,7 @@ class Pong(Elaboratable):
                 m.d.comb += ethi.i_rx_clk.eq(enet.rx_clk)
                 m.d.comb += ethi.i_rx_data.eq(enet.rx_data)
                 m.d.comb += ethi.i_rx_valid.eq(enet.rx_dv)
-                m.d.comb += enet.gtx_clk.eq(~ethi.o_tx_clk) # FUCKING CLOCK EDGEETTNESNTESNTES
+                m.d.comb += enet.gtx_clk.eq(~ethi.o_tx_clk)
                 m.d.comb += enet.tx_data.eq(ethi.o_tx_data)
                 m.d.comb += enet.tx_en.eq(ethi.o_tx_valid)
 
@@ -99,8 +89,8 @@ class Pong(Elaboratable):
 
             with m.State("INIT_RESET"):
                 with Transaction().body(m, request=btsig):
-                    #mdio.write(m, addr=PHY_ETH0, reg=20, data=(1<<14)) # F LINE LOOPBACK 
-                    #mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<14)) # F MAC LOOPBACK 
+                    #mdio.write(m, addr=PHY_ETH0, reg=20, data=(1<<14)) # LINE LOOPBACK? 
+                    #mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<14)) # MAC LOOPBACK?
                     #mdio.write(m, addr=PHY_ETH0, reg=0, data=(1<<15)) # soft reset 
                     m.next = "END"
             with m.State("END"):
@@ -168,6 +158,7 @@ class Pong(Elaboratable):
             m.d.comb += ledsg.eq(udp_repeater.counter) #type: ignore
             m.d.comb += ledsd.eq((self.parser.pmem.read_idx<<8) | self.parser.pmem.level)
             m.d.comb += ledsd.eq(ntps.leds)
+            m.d.comb += ledsg.eq(ntps.leds2)
            
 
             if WITH_CPU:

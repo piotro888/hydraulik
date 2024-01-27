@@ -12,13 +12,15 @@ class NtpProtoOut(Elaboratable, ProtoOut):
         self.rec = Signal(64)
         self.org = Signal(64)
         self.ref = Signal(64)
+
+        self.dispersion = Signal(32)
     
     def elaborate(self, platform):
         m = TModule()
 
         HDR_LEN = (8+4)*4 
         header =( 
-                Cat(self.xmt, self.rec, self.org, self.ref, C(0x47505300, 32), C(0x10, 32), C(0x10, 32), C(-18, 8), C(4, 8), C(1, 8), C(4,3), C(4, 3), C(0, 2))
+                Cat(self.xmt, self.rec, self.org, self.ref, C(0x47505300, 32), self.dispersion, C(0x01, 32), C(-24, 8), C(4, 8), C(1, 8), C(4,3), C(4, 3), C(0, 2))
         )
 
         hdr_cnt = Signal(range(HDR_LEN+1))

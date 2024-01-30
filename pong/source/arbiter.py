@@ -1,6 +1,4 @@
-from amaranth import Elaboratable, Signal
-from pong.common import STREAM_LAYOUT
-from pong.proto import out
+from amaranth import Elaboratable, Signal, Mux
 
 from transactron.core import Method, TModule, Transaction
 
@@ -19,15 +17,13 @@ class PriorityStreamArbiter(Elaboratable):
         selected = Signal(range(len(self.inputs)))
         next_select = Signal.like(selected)
 
-        # TODO: 2 cycle delay - opt to 1 cycle
-
         for i, input in reversed(list(enumerate(self.inputs))):
             with m.If(input.ready):
                 m.d.comb += next_select.eq(i)
     
         m.d.comb += select_new.eq(~in_progress)
         for i, input in enumerate(self.inputs):
-            with Transaction().body(m, request=(selected == i)):
+            with Transaction().body(m, request=Mux(in_progress, (selected == i), (next_select == i))):
                 in_res = input(m)
                 self.output(m, in_res)
 
